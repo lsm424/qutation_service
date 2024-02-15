@@ -1,0 +1,5 @@
+autobahn==23.6.2
+easyquotation==0.7.5
+loguru==0.7.2
+Requests==2.31.0
+Twisted==22.2.0

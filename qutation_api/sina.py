@@ -31,7 +31,7 @@ class Sina(Base):
         })
 
     def get_stock_api(self, stocks: str) -> str:
-        url = f"http://hq.sinajs.cn/rn={int(time.time() * 1000)}&list={stocks}&format=json"
+        url = f"http://hq.sinajs.cn/rn={int(time.time() * 1000)}&list={stocks}"
         for i in range(3):
             try:
                 r = self._session.get(url, headers=self._headers, timeout=0.3)

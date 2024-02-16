@@ -28,14 +28,15 @@ class WebSocketServer(WebSocketServerProtocol):
         super().__init__(*args, **kwargs)
         self.stock_code = None
         self.qutation = None
-        interval = conf.getint('websocket推送', 'push_interval')
         self.send_message_loop = task.LoopingCall(self.send_qutation_interval, "Hello, clients!")
-        self.send_message_loop.start(interval)
+        self.interval = conf.getint('websocket推送', 'push_interval')
 
     def send_qutation_interval(self, message):
         if self.qutation:
             self.sendMessage(json.dumps(self.qutation).encode('utf-8'), isBinary=False)
-            logger.info(f'完成推送到 {self.peer}')
+        else:
+            self.sendMessage(json.dumps({}).encode('utf-8'), isBinary=False)
+        logger.info(f'完成推送到 {self.peer}')
 
     def _parse_payload(self, payload):
         try:
@@ -54,13 +55,17 @@ class WebSocketServer(WebSocketServerProtocol):
             self.stock_code = stock_code
             with WebSocketServer.lock:
                 self.factory.clients.add(self)
+            if not self.send_message_loop.running:
+                self.send_message_loop.start(self.interval, now=False)
+                logger.info(f'{self.peer} 开启订阅 {payload}')
         elif self.CMD_UNSUBSCRIBE in payload:
             self.stock_code = None
+            if self.send_message_loop.running:
+                self.send_message_loop.stop()
+            logger.info(f'{self.peer} 取消订阅')
         else:
             logger.error(f'websocket收到消息的cmd不支持, json: {payload}')
             return self.RET_CODE_ERROR_CMD, '不支持的cmd'
-
-        logger.info(f"webocket收到消息: {payload}, peer: {self.peer}")
         return self.RET_CODE_SUCCSSS, ''
 
     def onConnect(self, request):
@@ -82,6 +87,8 @@ class WebSocketServer(WebSocketServerProtocol):
                 self.factory.clients.remove(self)
             except BaseException as e:
                 pass
+        if self.send_message_loop.running:
+            self.send_message_loop.stop()
 
 
 class QutationServerFactory(WebSocketServerFactory):
@@ -103,7 +110,11 @@ class QutationServerFactory(WebSocketServerFactory):
 
         # 根据股票代码拉取股票信息
         stock_code = list(set(reduce(lambda x, y: x + y, stock_code_list)))
-        qutation_dict = self.qutation.market_snapshot(stock_code)
+        try:
+            qutation_dict = self.qutation.market_snapshot(stock_code)
+        except BaseException as e:
+            logger.error(f'获取行情失败：{e}')
+            return
 
         # 分发推送
         with WebSocketServer.lock:

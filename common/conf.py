@@ -2,7 +2,7 @@ from configparser import ConfigParser
 
 conf = ConfigParser()
 __file = './common/config.ini'
-conf.read(__file)
+conf.read(__file, encoding='utf-8')
 
 
 def update_conf(section, key, value):

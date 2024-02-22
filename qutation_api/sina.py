@@ -82,8 +82,7 @@ class Sina(Base):
             'ask4': float(x[28]),
             'ask5_volume': int(x[29]),
             'ask5': float(x[30]),
-            'date': x[31],
-            'time': x[32],
+            'time': x[31] + ' ' + x[32],
         }}, map(lambda x: x.groups(), result)))
         # logger.info(f'新浪行情数据：{list(stock_dict.keys())[:10]}...')
         return stock_dict

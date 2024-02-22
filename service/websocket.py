@@ -1,18 +1,24 @@
 # encoding=utf-8
 import json
 import threading
+import time
 from functools import reduce
 
 from autobahn.twisted.websocket import WebSocketServerProtocol, WebSocketServerFactory
 
-from twisted.internet import task
+from twisted.internet import task, reactor
 
 from common.conf import conf
 from common.log import logger
 from qutation_api.sina import Sina
+from statistic.model import QutationLogModel
+from statistic.statistic import statistic_manager
 
 
-class WebSocketServer(WebSocketServerProtocol):
+class WebSocketClientHandle(WebSocketServerProtocol):
+    """
+    websocket客户端处理类，一个对象对应一个websocket连接
+    """
     CMD_SUBSCRIBE = 'subscribe'         # 订阅命令
     CMD_UNSUBSCRIBE = 'unsubscribe'     # 取消订阅
 
@@ -33,16 +39,18 @@ class WebSocketServer(WebSocketServerProtocol):
 
     def send_qutation_interval(self, message):
         if self.qutation:
-            self.sendMessage(json.dumps(self.qutation).encode('utf-8'), isBinary=False)
+            data = self.qutation
         else:
-            self.sendMessage(json.dumps({}).encode('utf-8'), isBinary=False)
-        logger.info(f'完成推送到 {self.peer}')
+            data = {}
+        self.sendMessage(json.dumps(data).encode('utf-8'), isBinary=False)
+        statistic_manager.push_qutation_log(self.client_name, self.client_id, QutationLogModel.OPR_PUSH, data)
+        logger.info(f'完成推送到 {self.client_id}')
 
-    def _parse_payload(self, payload):
+    def _parse_payload(self, raw_payload):
         try:
-            payload = json.loads(payload)
+            payload = json.loads(raw_payload)
         except BaseException as e:
-            logger.error(f'websocket收到消息格式错误，非json: {payload}')
+            logger.error(f'websocket收到消息格式错误，非json: {raw_payload}')
             return self.RET_CODD_NOT_JSON, '消息非json'
 
         if not isinstance(payload, dict):
@@ -53,16 +61,18 @@ class WebSocketServer(WebSocketServerProtocol):
                 logger.error(f'websocket收到消息的json key {self.CMD_SUBSCRIBE}\' 对应的value不是list[str], json: {payload}')
                 return self.RET_CODE_ERROR_VALUE, 'value类型非list[str]',
             self.stock_code = stock_code
-            with WebSocketServer.lock:
+            with WebSocketClientHandle.lock:
                 self.factory.clients.add(self)
             if not self.send_message_loop.running:
                 self.send_message_loop.start(self.interval, now=False)
                 logger.info(f'{self.peer} 开启订阅 {payload}')
+            statistic_manager.push_qutation_log(self.client_name, self.client_id, QutationLogModel.OPR_SUBSCRIBE, raw_payload)
         elif self.CMD_UNSUBSCRIBE in payload:
             self.stock_code = None
             if self.send_message_loop.running:
                 self.send_message_loop.stop()
             logger.info(f'{self.peer} 取消订阅')
+            statistic_manager.push_qutation_log(self.client_name, self.client_id, QutationLogModel.OPR_UNSUBSCRIBE)
         else:
             logger.error(f'websocket收到消息的cmd不支持, json: {payload}')
             return self.RET_CODE_ERROR_CMD, '不支持的cmd'
@@ -70,6 +80,8 @@ class WebSocketServer(WebSocketServerProtocol):
 
     def onConnect(self, request):
         logger.info(f"客户端接入： {request.peer}")
+        self.client_id = f'{request.peer}_{int(time.time() * 1000)}'
+        self.client_name = request.peer
 
     def onOpen(self):
         pass
@@ -82,7 +94,8 @@ class WebSocketServer(WebSocketServerProtocol):
 
     def onClose(self, wasClean, code, reason):
         logger.info(f"WebSocket connection closed: {reason}")
-        with WebSocketServer.lock:
+        statistic_manager.push_qutation_log(self.client_name, self.client_id, QutationLogModel.OPR_OFFLINE)
+        with WebSocketClientHandle.lock:
             try:
                 self.factory.clients.remove(self)
             except BaseException as e:
@@ -102,7 +115,7 @@ class QutationServerFactory(WebSocketServerFactory):
         logger.info(f'启动websocket服务')
 
     def update_qutation_interval(self, message):
-        with WebSocketServer.lock:
+        with WebSocketClientHandle.lock:
             stock_code_list = list(filter(lambda x: x is not None, map(lambda x: x.stock_code, self.clients)))
             if not stock_code_list:
                 logger.info(f'目前没有订阅')
@@ -117,9 +130,16 @@ class QutationServerFactory(WebSocketServerFactory):
             return
 
         # 分发推送
-        with WebSocketServer.lock:
+        with WebSocketClientHandle.lock:
             for c in self.clients:
                 qutation = qutation_dict
                 if c.stock_code:
-                    qutation = {k: v for k, v in qutation_dict.items() if k in c.stock_code}
+                    qutation = {c: qutation_dict[c] for c in c.stock_code if c in qutation_dict}
                 c.qutation = qutation
+
+
+def start_websocket_server():
+    factory = QutationServerFactory()
+    factory.protocol = WebSocketClientHandle
+    reactor.listenTCP(conf.getint('websocket推送', 'port'), factory)
+    reactor.run()

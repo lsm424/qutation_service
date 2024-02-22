@@ -1,3 +1,7 @@
 *.log
 .idea/
 *.pyc
+*.db
+*.tar
+test.py
+test.txt

@@ -2,7 +2,6 @@
 import io
 import itertools
 import json
-import multiprocessing
 from collections import namedtuple
 import os
 import threading
@@ -10,21 +9,26 @@ import time
 from datetime import datetime
 from queue import Queue
 from itertools import groupby
-import dask.array as da
-from dask import delayed
+import tarfile
 import seaborn as sns
 import matplotlib.pyplot as plt
 import matplotlib
-from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 from matplotlib.font_manager import FontProperties
+import platform
 
-matplotlib.use('TkAgg')
+if platform.system() != 'Linux':
+    matplotlib.use('TkAgg')
 
 from common.conf import conf
 from common.log import logger
 from statistic.model import QutationLogModel
 
-font = FontProperties(fname='./common/STHeiti Light.ttc', size=10)
+font_file = './common/STHeiti Light.ttc'
+if not os.path.exists(font_file):
+    with tarfile.open(font_file+'.tar') as tar:
+        # 解压所有文件到当前目录
+        tar.extractall(path='./common')
+font = FontProperties(fname=font_file, size=10)
 
 class StatisticManager:
     """
@@ -157,12 +161,16 @@ class StatisticManager:
             _res.append((s_b_timestamp - s_a_timestamp).total_seconds())
         return _res
 
-    def show_push_interval_image(self):
+    def show_push_interval_image(self, start=None, end=None):
         """
         生成推送间隔分布图
         """
-        data = QutationLogModel.select().where(QutationLogModel.opr == QutationLogModel.OPR_PUSH).\
-            order_by(QutationLogModel.create_time.asc())
+        where = [QutationLogModel.opr == QutationLogModel.OPR_PUSH]
+        if start:
+            where.append(QutationLogModel.create_time >= start)
+        if end:
+            where.append(QutationLogModel.create_time < end)
+        data = QutationLogModel.select().where(*where).order_by(QutationLogModel.create_time.asc())
         data = groupby(data, lambda x: x.client_id)
         res = []
 
@@ -172,13 +180,14 @@ class StatisticManager:
             res += list(map(self.__calc, zip(a, b)))
 
         res = list(zip(*res))
+        if not res:
+            return ''
         # 使用 Seaborn 画直方图
-        fig, ax = plt.subplots(1 + len(self.cared_stocks))
+        fig, ax = plt.subplots(1 + len(self.cared_stocks), figsize=(8, 8))
         sns.histplot(res[0], kde=True, ax=ax[0])
         ax[0].set_title('推送间隔分布图', fontproperties=font)
         ax[0].set_xlabel('间隔时间单位（s）', fontproperties=font)
         ax[0].set_ylabel('次数', fontproperties=font)
-
         for i, x in enumerate(self.cared_stocks):
             sns.histplot(res[1 + i], kde=True, ax=ax[1 + i])
             ax[1 + i].set_title(f'股票{x} timestamp间隔分布图', fontproperties=font)

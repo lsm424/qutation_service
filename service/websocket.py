@@ -15,10 +15,7 @@ from statistic.model import QutationLogModel
 from statistic.statistic import statistic_manager
 
 
-class WebSocketClientHandle(WebSocketServerProtocol):
-    """
-    websocket客户端处理类，一个对象对应一个websocket连接
-    """
+class WebSocketServer(WebSocketServerProtocol):
     CMD_SUBSCRIBE = 'subscribe'         # 订阅命令
     CMD_UNSUBSCRIBE = 'unsubscribe'     # 取消订阅
 
@@ -38,13 +35,12 @@ class WebSocketClientHandle(WebSocketServerProtocol):
         self.interval = conf.getint('websocket推送', 'push_interval')
 
     def send_qutation_interval(self, message):
+        data = {}
         if self.qutation:
             data = self.qutation
-        else:
-            data = {}
         self.sendMessage(json.dumps(data).encode('utf-8'), isBinary=False)
         statistic_manager.push_qutation_log(self.client_name, self.client_id, QutationLogModel.OPR_PUSH, data)
-        logger.info(f'完成推送到 {self.client_id}')
+        logger.info(f'完成推送到 {self.peer}')
 
     def _parse_payload(self, raw_payload):
         try:
@@ -61,11 +57,11 @@ class WebSocketClientHandle(WebSocketServerProtocol):
                 logger.error(f'websocket收到消息的json key {self.CMD_SUBSCRIBE}\' 对应的value不是list[str], json: {payload}')
                 return self.RET_CODE_ERROR_VALUE, 'value类型非list[str]',
             self.stock_code = stock_code
-            with WebSocketClientHandle.lock:
+            with WebSocketServer.lock:
                 self.factory.clients.add(self)
             if not self.send_message_loop.running:
                 self.send_message_loop.start(self.interval, now=False)
-                logger.info(f'{self.peer} 开启订阅 {payload}')
+            logger.info(f'{self.peer} 开启订阅 {payload}')
             statistic_manager.push_qutation_log(self.client_name, self.client_id, QutationLogModel.OPR_SUBSCRIBE, raw_payload)
         elif self.CMD_UNSUBSCRIBE in payload:
             self.stock_code = None
@@ -95,7 +91,7 @@ class WebSocketClientHandle(WebSocketServerProtocol):
     def onClose(self, wasClean, code, reason):
         logger.info(f"WebSocket connection closed: {reason}")
         statistic_manager.push_qutation_log(self.client_name, self.client_id, QutationLogModel.OPR_OFFLINE)
-        with WebSocketClientHandle.lock:
+        with WebSocketServer.lock:
             try:
                 self.factory.clients.remove(self)
             except BaseException as e:
@@ -115,7 +111,7 @@ class QutationServerFactory(WebSocketServerFactory):
         logger.info(f'启动websocket服务')
 
     def update_qutation_interval(self, message):
-        with WebSocketClientHandle.lock:
+        with WebSocketServer.lock:
             stock_code_list = list(filter(lambda x: x is not None, map(lambda x: x.stock_code, self.clients)))
             if not stock_code_list:
                 logger.info(f'目前没有订阅')
@@ -130,16 +126,16 @@ class QutationServerFactory(WebSocketServerFactory):
             return
 
         # 分发推送
-        with WebSocketClientHandle.lock:
+        with WebSocketServer.lock:
             for c in self.clients:
                 qutation = qutation_dict
                 if c.stock_code:
-                    qutation = {c: qutation_dict[c] for c in c.stock_code if c in qutation_dict}
+                    qutation = {k: v for k, v in qutation_dict.items() if k in c.stock_code}
                 c.qutation = qutation
 
 
 def start_websocket_server():
     factory = QutationServerFactory()
-    factory.protocol = WebSocketClientHandle
+    factory.protocol = WebSocketServer
     reactor.listenTCP(conf.getint('websocket推送', 'port'), factory)
     reactor.run()

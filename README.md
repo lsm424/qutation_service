@@ -7,6 +7,7 @@
   生产者：通过全局的定时任务周期统一拉取所有订阅的行情，更新全局行情数据；<br/>
   消费者：各个websocket连接周期推送订阅的行情数据；<br/>
   对应目录service实现
+- http服务：基于flask库提供http接口，目前只有统计相关查询接口
 
 - 订阅协议：<br/>
 订阅所有股票：```{"subscribe": []}``` <br/>
@@ -37,6 +38,11 @@ update_interval=1
 push_interval=3
 # 服务端口
 port=9000
+# 推送间隔误差时间，单位秒
+push_interval_torrlencance=0.5
+[http服务]
+port=80
+ip=0.0.0.0
 ```
 
 #### 3、启动服务
@@ -62,3 +68,7 @@ port=9000
 2024-02-15 19:17:22+0800 [-] Text message received: {"sz002138": {"name": "\u987a\u7edc\u7535\u5b50", "open": 26.64, "close": 26.63, "now": 26.04, "high
 2024-02-15 19:17:27+0800 [-] Text message received: {"sz159907": {"name": "2000ETF", "open": 1.132, "close": 1.119, "now": 1.195, "high": 1.209, "low": 
 ```
+
+#### 5、查看统计数据
+- 查看全量推间隔分布数据图url：http://ip:port/statistic/interval
+- 查看2024-02-23日到2024-02-24日之间的推间隔分布数据图url：http://ip:port/statistic/interval?start=2024-02-23&end=2024-02-24

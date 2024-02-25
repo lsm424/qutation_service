@@ -85,17 +85,17 @@ class Base:
         匹配规则
         ['50', '51', '60', '90', '110'] 为 sh
         ['00', '13', '18', '15', '16', '18', '20', '30', '39', '115'] 为 sz
-        ['5', '6', '9'] 开头的为 sh
-        ['8']开头为bj， 其余为 sz
+        ['5', '6', '9'] 开头的为 sh，
+        ['8']开头为bj，其余为 sz
         :param stock_code:股票ID, 若以 'sz', 'sh' 开头直接返回对应类型，否则使用内置规则判断
         :return 'sh' or 'sz'"""
         sh_head = ("50", "51", "60", "90", "110", "113", "118",
                    "132", "204", "5", "6", "9", "7")
-        bj_head = ('8',)
+        bj_head = ('8', )
         if stock_code.startswith(("sh", "sz", "zz", "bj")):
             return stock_code[:2]
         else:
-            return "sh" if stock_code.startswith(sh_head) else 'bj' if stock_code.startswith(bj_head) else "sz"
+            return "sh" if stock_code.startswith(sh_head) else "bj" if stock_code.startswith(bj_head) else "sz"
 
     @staticmethod
     def update_stock_codes():

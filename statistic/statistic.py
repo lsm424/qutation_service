@@ -10,11 +10,12 @@ from datetime import datetime
 from queue import Queue
 from itertools import groupby
 import tarfile
-import seaborn as sns
 import matplotlib.pyplot as plt
 import matplotlib
+from joblib import Parallel, delayed
 from matplotlib.font_manager import FontProperties
 import platform
+import numpy as np
 
 if platform.system() != 'Linux':
     matplotlib.use('TkAgg')
@@ -173,23 +174,25 @@ class StatisticManager:
         data = QutationLogModel.select().where(*where).order_by(QutationLogModel.create_time.asc())
         data = groupby(data, lambda x: x.client_id)
         res = []
-
         for _, models in data:
             a, b = itertools.tee(models)
             next(b, None)  # 把 b 的指针移到第二个元素
-            res += list(map(self.__calc, zip(a, b)))
+            res += Parallel(n_jobs=os.cpu_count())(list(map(lambda x: delayed(self.__calc)(x), zip(a, b))))
+            # res += list(map(self.__calc, zip(a, b)))
 
         res = list(zip(*res))
         if not res:
             return ''
-        # 使用 Seaborn 画直方图
+        logger.info(f'count={len(res[0])}')
         fig, ax = plt.subplots(1 + len(self.cared_stocks), figsize=(8, 8))
-        sns.histplot(res[0], kde=True, ax=ax[0])
-        ax[0].set_title('推送间隔分布图', fontproperties=font)
+        hist, bins = np.histogram(res[0], bins=20)
+        ax[0].bar(bins[:-1], hist, width=np.diff(bins), align='edge')
+        ax[0].set_title('推送时间间隔分布图', fontproperties=font)
         ax[0].set_xlabel('间隔时间单位（s）', fontproperties=font)
         ax[0].set_ylabel('次数', fontproperties=font)
         for i, x in enumerate(self.cared_stocks):
-            sns.histplot(res[1 + i], kde=True, ax=ax[1 + i])
+            hist, bins = np.histogram(res[1 + i], bins=20)
+            ax[1 + i].bar(bins[:-1], hist, width=np.diff(bins), align='edge')
             ax[1 + i].set_title(f'股票{x} timestamp间隔分布图', fontproperties=font)
             ax[1 + i].set_xlabel('间隔时间单位（s）', fontproperties=font)
             ax[1 + i].set_ylabel('次数', fontproperties=font)

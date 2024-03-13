@@ -1,7 +1,10 @@
 from configparser import ConfigParser
+import os
 
 conf = ConfigParser()
-__file = './common/config.ini'
+cur_path = os.getcwd()
+root = cur_path[: cur_path.find('quotation_service')] + '/quotation_service'
+__file = os.path.join(os.path.relpath(root, start=cur_path), './common/config.ini')
 conf.read(__file)
 
 

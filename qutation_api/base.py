@@ -13,11 +13,12 @@ from common.log import logger
 
 
 class Base:
-    def __init__(self, batchsize=800):
+    def __init__(self, batchsize=800, api_name=''):
         """
         初始化股票行情基类
         :param batchsize: 批量拉取的颗粒度大小
         """
+        self.api_name = api_name
         self._session = requests.session()
         self._headers = {
             "Accept-Encoding": "gzip, deflate, sdch",
@@ -50,7 +51,10 @@ class Base:
         start1 = time.time()
         r = list(map(lambda x: self.__executor.submit(self.get_stock_api, x), stocks))
         r, _ = wait(r, return_when=ALL_COMPLETED)
-        r = filter(lambda x: x, map(lambda x: x.result(), r))
+        r = list(map(lambda x: x.result(), r))
+        if any(map(lambda x: not x, r)):  # 如果有获取失败
+            logger.error(f'{self.api_name}行情获取存在失败')
+            return None
         start2 = time.time()
         pool = ppool.ThreadPool(os.cpu_count())
         try:
@@ -59,7 +63,7 @@ class Base:
             pool.close()
         r = reduce(lambda x, y: x | y, res)
         # r = self.format_response_data(r)
-        logger.info(f'完成行情数据获取{len(r)}条，总耗时：{time.time() - start1}，网络耗时：{start2 - start1}，数据组装耗时：{time.time() - start2}')
+        logger.info(f'完成{self.api_name}行情数据获取{len(r)}条，总耗时：{time.time() - start1}，网络耗时：{start2 - start1}，数据组装耗时：{time.time() - start2}')
         return r
 
     @abc.abstractmethod

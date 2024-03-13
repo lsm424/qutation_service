@@ -11,6 +11,7 @@ from twisted.internet import task, reactor
 from common.conf import conf
 from common.log import logger
 from qutation_api.sina import Sina
+from qutation_api.tencent import Tencent
 from statistic.model import QutationLogModel
 from statistic.statistic import statistic_manager
 
@@ -104,7 +105,7 @@ class QutationServerFactory(WebSocketServerFactory):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.clients = set()
-        self.qutation = Sina()
+        self.qutation = [Sina(), Tencent()]     # 配置行情api列表
         interval = conf.getint('websocket推送', 'update_interval')
         self.send_message_loop = task.LoopingCall(self.update_qutation_interval, "Hello, clients!")
         self.send_message_loop.start(interval)
@@ -118,20 +119,24 @@ class QutationServerFactory(WebSocketServerFactory):
                 return
 
         # 根据股票代码拉取股票信息
-        stock_code = list(set(reduce(lambda x, y: x + y, stock_code_list)))
-        try:
-            qutation_dict = self.qutation.market_snapshot(stock_code)
-        except BaseException as e:
-            logger.error(f'获取行情失败：{e}')
-            return
+        for qutation in self.qutation:
+            stock_code = list(set(reduce(lambda x, y: x + y, stock_code_list)))
+            try:
+                qutation_dict = qutation.market_snapshot(stock_code)
+                if not qutation_dict:
+                    continue
+            except BaseException as e:
+                logger.error(f'获取行情失败：{e}')
+                continue
 
-        # 分发推送
-        with WebSocketServer.lock:
-            for c in self.clients:
-                qutation = qutation_dict
-                if c.stock_code:
-                    qutation = {k: v for k, v in qutation_dict.items() if k in c.stock_code}
-                c.qutation = qutation
+            # 分发推送
+            with WebSocketServer.lock:
+                for c in self.clients:
+                    qutation = qutation_dict
+                    if c.stock_code:
+                        qutation = {k: v for k, v in qutation_dict.items() if k in c.stock_code}
+                    c.qutation = qutation
+            break
 
 
 def start_websocket_server():

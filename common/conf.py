@@ -3,9 +3,9 @@ import os
 
 conf = ConfigParser()
 cur_path = os.getcwd()
-root = cur_path[: cur_path.find('quotation_service')] + '/quotation_service'
-__file = os.path.join(os.path.relpath(root, start=cur_path), './common/config.ini')
-conf.read(__file)
+root = os.path.join(cur_path[: cur_path.find('qutation_service')], 'qutation_service')
+__file = os.path.join(root, 'common', 'config.ini')
+conf.read(__file, encoding='utf-8')
 
 
 def update_conf(section, key, value):

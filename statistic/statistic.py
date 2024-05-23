@@ -39,7 +39,7 @@ class StatisticManager:
     QuotationInfo = namedtuple('QuotationInfo', ['client_name', 'client_id', 'opr', 'data', 'create_time',
                                                  'analysis_statue', 'analysis_desc', 'avg_time'],
                                defaults=('', '', None, '', None, QutationLogModel.ANA_SUCC, '', 0.0))
-    cared_stocks = {'sz002291', 'sh000010', 'bj870199'}
+    cared_stocks = {'sh000300', 'sz000852', 'sz000905', 'sz000016'}
 
     def __init__(self):
         self._torrlencance = conf.getfloat('websocket推送', 'push_interval_torrlencance')
@@ -143,8 +143,11 @@ class StatisticManager:
             self._analysis_info[quotation_info.client_id] = quotation_info
 
         if quotation_info.opr == QutationLogModel.OPR_PUSH and stocks:
-            quotation_info = quotation_info._replace(data=json.dumps({x: quotation_info.data[x] for x in stocks}))
-            logger.info(f'stock: {stocks}')
+            try:
+                quotation_info = quotation_info._replace(data=json.dumps({x: quotation_info.data[x] for x in stocks}))
+                logger.info(f'stock: {stocks}')
+            except BaseException as e:
+                logger.error(f'e: {e}')
         return quotation_info._asdict()
 
     @staticmethod

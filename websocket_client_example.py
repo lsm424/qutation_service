@@ -7,7 +7,7 @@ class MyClientProtocol(WebSocketClientProtocol):
     cnt = 0
     def onOpen(self):
         print('client open')
-        self.sendMessage(json.dumps({'subscribe': []}).encode('utf-8'))
+        self.sendMessage(json.dumps({'subscribe': ['sh000300','sz000905','sz000852','sz000016']}).encode('utf-8'))
 
     def onMessage(self, payload, isBinary):
         self.cnt += 1

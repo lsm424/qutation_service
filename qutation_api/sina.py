@@ -53,7 +53,7 @@ class Sina(Base):
             return {}
         result = self.grep_detail_with_prefix.finditer(stocks_detail)
         stock_dict = reduce(lambda x, y: x | y, map(lambda x: {x[0]: {
-            'name': x[1],       #
+            'name': x[1],   #
             'code': x[0],
             'open': x[2],    # 当日
             'close': x[3],

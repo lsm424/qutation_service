@@ -48,6 +48,10 @@ class Base:
             stocks = self.__stock_code
         elif not isinstance(stocks, list):
             stocks = [stocks]
+            stocks = [self.__get_stock_type(code) + code[-6:] for code in stocks]
+        else:
+            stocks = [self.__get_stock_type(code) + code[-6:] for code in stocks]
+
         start1 = time.time()
         r = list(map(lambda x: self.__executor.submit(self.get_stock_api, x), stocks))
         r, _ = wait(r, return_when=ALL_COMPLETED)

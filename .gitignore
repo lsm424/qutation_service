@@ -6,3 +6,5 @@ test.txt
 test.py
 *.db.tar
 *.db
+tmp.py
+.vscode

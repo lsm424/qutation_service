@@ -23,6 +23,7 @@ class Sina(Base):
     del_null_data_stock = re.compile(
         r"(\w{2}\d+)=\"\";"
     )
+    grep_future_prefix = re.compile(r'(\w{2}\d+)="(.+?)"')
 
     def __init__(self):
         batch_size = conf.getint('新浪', 'batch_size')
@@ -42,7 +43,43 @@ class Sina(Base):
                 logger.error(f'发送获取新浪行情数据失败: {e}')
         return None
 
-    def format_response_data(self, stocks_detail: str):
+    # 期货解析
+    def format_future_data(self, stocks_detail: str):
+        if not stocks_detail:
+            return {}
+
+        stock_dict = {}
+        results = self.grep_future_prefix.finditer(stocks_detail)
+        stock_dict = reduce(lambda x, y: x | y,
+                            map(lambda r: {r[0]:  {
+                                'name': r[50],
+                                'code': r[0],
+                                'open': r[1],
+                                'last_settlep': r[14],
+                                'high': r[2],
+                                'low': r[3],
+                                'now': float(r[4]),
+                                'volume': int(r[5]),
+                                'holding': int(float(r[7])),
+                                'time': r[37] + ' ' + r[38]
+                            }}, map(lambda x: [x[0]] + x[1].split(','), map(lambda x: x.groups(), results))))
+        # for r in map(lambda x: [x[0]] + x[1].split(','), map(lambda x: x.groups(), results)):
+        #     stock_dict[r[0]] = {
+        #         'name': r[50],
+        #         'code': r[0],
+        #         'open': r[1],
+        #         'close': r[14],
+        #         'high': r[2],
+        #         'low': r[3],
+        #         'now': r[4],
+        #         'volumn': r[5],
+        #         'turn_over': r[7],
+        #         'time': r[37] + ' ' + r[38]
+        #     }
+
+        return stock_dict
+
+    def format_stock_data(self, stocks_detail: str):
         # stocks_detail = self.del_null_data_stock.sub('', "".join(rep_data)).replace(' ', '')
         # if not stocks_detail:
         #     logger.error(f'无新浪行情数据，无法组装')
@@ -57,7 +94,7 @@ class Sina(Base):
             'code': x[0],
             'open': x[2],    # 当日
             'close': x[3],
-            'now': x[4],
+            'now': float(x[4]),
             'high': x[5],
             'low': x[6],
             # 'buy': x[7],
@@ -88,6 +125,10 @@ class Sina(Base):
         }}, map(lambda x: x.groups(), result)))
         # logger.info(f'新浪行情数据：{list(stock_dict.keys())[:10]}...')
         return stock_dict
+
+    def format_response_data(self, stocks_detail: str):
+        format = self.format_future_data if '期货' in stocks_detail else self.format_stock_data
+        return format(stocks_detail)
 
 
 if __name__ == '__main__':

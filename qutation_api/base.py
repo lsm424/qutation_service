@@ -1,4 +1,4 @@
-#encoding=utf-8
+# encoding=utf-8
 import abc
 import multiprocessing.pool as ppool
 import re
@@ -37,7 +37,7 @@ class Base:
         batch_cnt = int(len(stock_code_list) / batchsize) + 1
         self.__stock_code = [','.join(stock_code_list[x * batchsize: (x + 1) * batchsize]) for x in range(batch_cnt)]
 
-    def market_snapshot(self, stocks=[]):
+    def market_snapshot(self, stocks=[], ):
         """
         获取股票行情
         :param stocks: 指定股票代码列表，默认空表示所有股票代码
@@ -48,9 +48,9 @@ class Base:
             stocks = self.__stock_code
         elif not isinstance(stocks, list):
             stocks = [stocks]
-            stocks = [self.__get_stock_type(code) + code[-6:] for code in stocks]
+            stocks = [self.__get_stock_type(code) + code[-6:] if not code.startswith('CFF') else code for code in stocks]
         else:
-            stocks = [self.__get_stock_type(code) + code[-6:] for code in stocks]
+            stocks = [self.__get_stock_type(code) + code[-6:] if not code.startswith('CFF') else code for code in stocks]
 
         start1 = time.time()
         r = list(map(lambda x: self.__executor.submit(self.get_stock_api, x), stocks))

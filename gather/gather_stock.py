@@ -12,7 +12,6 @@ from common.log import logger
 from common.utils import delta
 from qutation_api.sina import Sina
 from qutation_api.tencent import Tencent
-# import schedule
 from concurrent.futures import ALL_COMPLETED, ThreadPoolExecutor, FIRST_COMPLETED, wait
 from apscheduler.schedulers.background import BackgroundScheduler
 from exchange_calendars import get_calendar
@@ -34,7 +33,6 @@ class Gather:
             start_time = target_time - timedelta(seconds=2)
             scheduler.add_job(self.do_job, 'cron', hour=start_time.hour, minute=start_time.minute,
                               second=start_time.second, day_of_week='*', args=[target_time, idx])
-            # schedule.every().day.at(timestamp).do(self.do_job, self.get_timestamp[timestamp], idx)
         logger.info(f'启动{name}采集：{self.stock_no}，时间点：{sorted(map(lambda x: x.strftime("%H:%M:%S"), self.get_timestamp))}')
 
     def do_job(self, date_time: datetime, idx):
@@ -44,7 +42,6 @@ class Gather:
             logger.warning(f'第{idx}轮采集{self.name}退出，非交易日')
             return
         logger.info(f'第{idx}轮采集{self.name}开始，目标时间：{targe_time}')
-        # targe_time_str = '2024-06-17 15:00:00'
 
         def _run(i):
             ret = []
@@ -91,7 +88,6 @@ class IndexSave:
         self._init()
         init_time = init_time.split(':')
         scheduler.add_job(self._init, 'cron', hour=int(init_time[0]), minute=int(init_time[1]), second=int(init_time[2]), day_of_week='*')
-        # schedule.every().day.at('11:48').do(self._init)
 
     def _init(self):
         with get_db_context_session(False) as session:
@@ -102,24 +98,16 @@ class IndexSave:
         self.acc_amount = {x.index_code: x.acc_amount for x in models}
         self.acc_volume = {x.index_code: x.acc_volume for x in models}
         self.closep = {x.index_code: x.closep for x in models}
-        logger.info(f'初始化acc_amout：{self.acc_amount}，acc_volume：{self.acc_volume}，closep：{self.closep}, ids: {ids}')
+        logger.info(f'初始化股票acc_amout：{self.acc_amount}，acc_volume：{self.acc_volume}，closep：{self.closep}, ids: {ids}')
 
     def save(self, stocks: list):
-        stock_models = list(map(lambda x: IndexMinutePrice(curr_min=x['time'].split(' ')[-1], index_code=x['code'], last_closep=float(x['close']),
+        stock_models = list(map(lambda x: IndexMinutePrice(curr_min=x['time'].split(' ')[-1], index_code=x['code']+str(time.time())[-4:], last_closep=float(x['close']),
                                                            openp=float(x['open']), highp=float(x['high']), lowp=float(x['low']),
                                                            volume=x['volume'], amount=x['turn_over'], closep=float(x['now']),
                                                            min_pct_change=1 if not self.closep.get(x['code'], None) else (
                                                                (float(x['now']) - self.closep[x['code']]) / self.closep[x['code']]),
                                                            acc_volume=x['volume'] + self.acc_volume.get(x['code'], 0),
                                                            acc_amount=x['turn_over'] + self.acc_amount.get(x['code'], 0)), stocks))
-        date = datetime.now().strftime('%Y-%m-%d')
-        stock_models += list(map(lambda x: IndexMinutePriceFull(trade_date=date, curr_min=x['time'].split(' ')[-1], index_code=x['code'],
-                                                                last_closep=float(x['close']), openp=float(x['open']), highp=float(x['high']),
-                                                                lowp=float(x['low']), volume=x['volume'], amount=x['turn_over'], closep=x['now'],
-                                                                min_pct_change=1 if not self.closep.get(x['code'], None) else (
-                                                                    (float(x['now']) - self.closep[x['code']]) / self.closep[x['code']]),
-                                                                acc_volume=x['volume'] + self.acc_volume.get(x['code'], 0),
-                                                                acc_amount=x['turn_over'] + self.acc_amount.get(x['code'], 0)), stocks))
         with get_db_context_session(False) as session:
             session.add_all(stock_models)
             session.commit()
@@ -148,7 +136,7 @@ class FutureSave:
             self.acc_volume = {x.indexfuture_code: x.acc_volume for x in models}
             self.closep = {x.indexfuture_code: x.closep for x in models}
             self.last_closep = {x.indexfuture_code: x.closep for x in models}
-            logger.info(f'初始化acc_amout：{self.acc_amount}，acc_volume：{self.acc_volume}，closep：{self.closep}, ids:{ids}')
+            logger.info(f'初始化期货acc_amout：{self.acc_amount}，acc_volume：{self.acc_volume}，closep：{self.closep}, ids:{ids}')
 
     def save(self, stocks: list):
         stock_models = list(map(lambda x: IndexFutureMinutePrice(
@@ -165,22 +153,6 @@ class FutureSave:
             min_pct_change=1 if not self.closep.get(x['code'], None) else ((float(x['now']) - self.closep[x['code']]) / self.closep[x['code']]),
             acc_volume=x['volume'] + self.acc_volume.get(x['code'], 0),
             acc_amount=x.get('turn_over', 0) + self.acc_amount.get(x['code'], 0)), stocks))
-        date = datetime.now().strftime('%Y-%m-%d')
-        stock_models += list(map(lambda x: IndexFutureMinutePriceFull(
-            trade_date=date,
-            curr_min=x['time'].split(' ')[-1],
-            indexfuture_code=x['code'],
-            last_settlep=float(x['last_settlep']),
-            last_closep=self.last_closep.get(x['code'], 0),
-            openp=float(x['open']),
-            highp=float(x['high']),
-            lowp=float(x['low']),
-            volume=x['volume'],
-            holding=x['holding'],
-            closep=x['now'],
-            min_pct_change=1 if not self.closep.get(x['code'], None) else ((float(x['now']) - self.closep[x['code']]) / self.closep[x['code']]),
-            acc_volume=x['volume'] + self.acc_volume.get(x['code'], 0),
-            acc_amount=x.get('turn_over', 0) + self.acc_amount.get(x['code'], 0)), stocks))
 
         with get_db_context_session(False) as session:
             session.add_all(stock_models)
@@ -194,14 +166,14 @@ class FutureSave:
 
 class GaterManager:
     def __init__(self, debug=False) -> None:
-        # 每天清理天表
-        delete_time = '00:01:00'.split(':')
-        scheduler.add_job(self.delete_table, 'cron', hour=int(delete_time[0]), minute=int(delete_time[1]),
+        # 定时迁移到full表，并清理天表
+        delete_time = '15:01:00'.split(':')
+        scheduler.add_job(self.delete_migrate_table, 'cron', hour=int(delete_time[0]), minute=int(delete_time[1]),
                           second=int(delete_time[2]), day_of_week='*', args=[IndexMinutePrice])
-        scheduler.add_job(self.delete_table, 'cron', hour=int(delete_time[0]), minute=int(delete_time[1]),
+        scheduler.add_job(self.delete_migrate_table, 'cron', hour=int(delete_time[0]), minute=int(delete_time[1]),
                           second=int(delete_time[2]), day_of_week='*', args=[IndexFutureMinutePrice])
-        self.delete_table(IndexMinutePrice)
-        self.delete_table(IndexFutureMinutePrice)
+        self.delete_migrate_table(IndexMinutePrice)
+        self.delete_migrate_table(IndexFutureMinutePrice)
 
         # 启动指数采集
         stock_no = conf.get('采集', '指数').split(',')
@@ -218,14 +190,28 @@ class GaterManager:
             time_info.append(now + timedelta(seconds=5))
         self.gather_Future = Gather(stock_no, time_info, FutureSave(init_time='00:02:00'), '期货')
 
-    def delete_table(self, table):
+    def delete_migrate_table(self, table):
         now = datetime.today()
+        today = now.strftime('%Y-%m-%d')
+        # if not stock_calendar.is_session(today):
+        #     logger.warning(f'非交易日，无需迁移')
+        #     return
+
         now = datetime(year=now.year, month=now.month, day=now.day)
-        logger.warning(f'delete table {table.__tablename__} < {now}')
         with get_db_context_session(False) as session:
+            if today > '15:00:00':
+                models = session.query(table).all()
+                logger.warning(f'migrate table {table.__tablename__}, {len(models)}条')
+                models = list(map(lambda x: {**x.to_dict(), **{"trade_date": today}}, models))
+                if table.__tablename__ == 't_index_minute_price':
+                    models = list(map(lambda x: IndexMinutePriceFull(**x), models))
+                    session.add_all(models)
+                elif table.__tablename__ == 't_indexfuture_minute_price':
+                    models = list(map(lambda x: IndexFutureMinutePriceFull(**x), models))
+                    session.add_all(models)
+            logger.warning(f'delete table {table.__tablename__} < {today}')
             session.query(table).filter(table.update_time < now).delete()
             session.commit()
-            # time.sleep(3)
 
     def run(self):
         while True:

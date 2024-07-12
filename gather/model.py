@@ -2,7 +2,7 @@
 from contextlib import contextmanager
 from sqlalchemy import MetaData, PrimaryKeyConstraint, Table, create_engine
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import Column, Float, String, DateTime, Float, BigInteger  # 区分大小写
+from sqlalchemy import Column, Float, String, DateTime, Float, BigInteger, Text, Integer  # 区分大小写
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime
 from common.conf import conf
@@ -10,8 +10,19 @@ from common.conf import conf
 base = declarative_base()
 
 
+def to_dict(self):
+    if not hasattr(self, 'serialize_only'):
+        self.serialize_only = list(map(lambda x: x.name, self.__table__.columns))
+    return {c: getattr(self, c, None) for c in self.serialize_only}
+
+
+base.to_dict = to_dict
+
+
 class IndexMinutePrice(base):
     __tablename__ = 't_index_minute_price'
+    serialize_only = ('curr_min', 'index_code', 'last_closep', 'openp', 'highp', 'lowp', 'closep',
+                      'min_pct_change', 'amount', 'volume', 'acc_amount', 'acc_volume', 'update_time')
     __table_args__ = (
         PrimaryKeyConstraint('curr_min', 'index_code'),
     )
@@ -55,6 +66,8 @@ class IndexMinutePriceFull(base):
 
 class IndexFutureMinutePrice(base):
     __tablename__ = 't_indexfuture_minute_price'
+    serialize_only = ('curr_min', 'indexfuture_code', 'last_closep', 'last_settlep', 'openp', 'highp', 'lowp', 'closep',
+                      'min_pct_change', 'amount', 'volume', 'acc_amount', 'acc_volume', 'holding', 'update_time')
     # id = Column(BigInteger, primary_key=True, autoincrement=True, nullable=True, unique=True)
 
     curr_min = Column(String(10), primary_key=True, nullable=True)
@@ -112,16 +125,38 @@ index_Future_minute_price_table = Table(IndexFutureMinutePrice.__tablename__, me
 # 创建数据表
 base.metadata.create_all(engine, checkfirst=True)
 
+# sqlite表
+sqlite_base = declarative_base()
+sqlite_base.to_dict = to_dict
+sqlite_engine = create_engine('sqlite:///raw_stock.db', echo=True)
+sqlite_metadata = MetaData(bind=sqlite_engine)
 
-def get_db_session():
+
+class RawStock(sqlite_base):
+    __tablename__ = 't_raw_stock'
+    id = Column(Integer, primary_key=True, autoincrement=True, nullable=True, unique=True)
+    code = Column(String(10), nullable=False)
+    type = Column(String(10), nullable=False)
+    data = Column(Text, nullable=False)
+    time = Column(String(20), nullable=False)
+    # mark = Column(Integer, nullable=False, default=0)
+    create_time = Column(DateTime, nullable=False, onupdate=datetime.now, default=datetime.now)
+
+
+sqlite_metadata.create_all(sqlite_engine)
+sqlite_base.metadata.create_all(sqlite_engine, checkfirst=True)
+# raw_stock_table = Table(RawStock.__tablename__, sqlite_metadata, autoload=True)
+
+
+def get_db_session(engine):
     DbSession = sessionmaker()
     DbSession.configure(bind=engine)
     return DbSession()
 
 
 @contextmanager
-def get_db_context_session(transaction=False):
-    session = get_db_session()
+def get_db_context_session(transaction=False, engine=engine):
+    session = get_db_session(engine)
 
     if transaction:
         try:

@@ -12,7 +12,6 @@ SET ANSI_PADDING ON
 GO
 
 CREATE TABLE [dbo].[t_index_minute_price](
-	[id] [BIGINT] IDENTITY(1,1) NOT NULL,
   [curr_min] [VARCHAR](10) NOT NULL,
 	[index_code] [VARCHAR](20) NOT NULL,
 	[last_closep] [NUMERIC](18, 4) NOT NULL,

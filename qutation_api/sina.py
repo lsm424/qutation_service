@@ -50,12 +50,14 @@ class Sina(Base):
 
         stock_dict = {}
         results = self.grep_future_prefix.finditer(stocks_detail)
+        # results = list(map(lambda x: [x[0]] + x[1].split(','), map(lambda x: x.groups(), results)))
         stock_dict = reduce(lambda x, y: x | y,
                             map(lambda r: {r[0]:  {
                                 'name': r[50],
                                 'code': r[0],
                                 'open': r[1],
-                                'last_settlep': r[14],
+                                'last_closep': r[14],
+                                'last_settlep': r[15],
                                 'high': r[2],
                                 'low': r[3],
                                 'now': float(r[4]),
@@ -133,6 +135,6 @@ class Sina(Base):
 
 if __name__ == '__main__':
     api = Sina()
-    ret = api.market_snapshot('sh600227')
+    ret = api.market_snapshot('sh000016')
     import json
     print(json.dumps(ret))

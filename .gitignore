@@ -5,6 +5,8 @@
 test.txt
 test.py
 *.db.tar
-*.db
+quotation.db
 tmp.py
 .vscode
+*.ipynb
+*.rar

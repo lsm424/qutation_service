@@ -124,7 +124,7 @@ class GatherManager:
                     end = session.query(RawStock).filter(RawStock.code == sqlit_stock_no, RawStock.create_time >=
                                                          today).order_by(RawStock.create_time.asc()).first()
             if not end:
-                logger.error(f'{stock_no} 没有找到数据，目标时间 {targe_time_str}')
+                logger.error(f'{stock_no} 没有找到数据，目标时间 {targe_time_str}, idx: {idx}')
                 return
             # 查询近分钟数据
             with get_db_context_session(False, sqlite_engine) as session:
@@ -138,7 +138,7 @@ class GatherManager:
                 start = Box(all_data[0].to_dict())
                 start.data = Box(json.loads(start.data))
                 nows = list(map(lambda x: json.loads(x.data)['now'], all_data))
-                high, low = max(nows), min(nows)
+                high, low = (max(nows), min(nows)) if idx != 0 else (end.data.now, end.data.now)
                 volume = (end.data.volume - start.data.volume) if idx != 0 else end.data.volume
                 min_pct_change = ((end.data.now - start.data.now) / start.data.now) if idx != 0 else end.data.now / float(end.data.close)
             elif len(all_data) == 1:
@@ -147,7 +147,7 @@ class GatherManager:
 
             self.last_stock[stock_no] = end
             # 构造分钟记录表记录
-            logger.info(f'{stock_no} 完成分析 {curr_min_str}, 开时间：{start.time}/{start.id} 收时间：{end.time}/{end.id}, high: {high}, low: {low}')
+            logger.info(f'{stock_no} 完成分析 {curr_min_str}, 开时间：{start.time}/{start.id} 收时间：{end.time}/{end.id}, high: {high}, low: {low}, idx: {idx}, len(all_data): {len(all_data)}')
             if stock_type == '指数':
                 amount = 0 if len(all_data) == 1 else end.data.turn_over - start.data.turn_over
                 return IndexMinutePrice(curr_min=curr_min.strftime('%H%M'), index_code=self.stock_name[stock_no], last_closep=float(end.data.close),

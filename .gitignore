@@ -10,3 +10,4 @@ tmp.py
 .vscode
 *.ipynb
 *.rar
+*.db

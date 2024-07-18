@@ -135,6 +135,6 @@ class Sina(Base):
 
 if __name__ == '__main__':
     api = Sina()
-    ret = api.market_snapshot('sh000016')
+    ret = api.market_snapshot('CFF_RE_IC2412')
     import json
     print(json.dumps(ret))

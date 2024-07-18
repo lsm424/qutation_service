@@ -17,6 +17,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from exchange_calendars import get_calendar
 from apscheduler.triggers.cron import CronTrigger
 import json
+import os
 
 # 创建一个后台调度器
 scheduler = BackgroundScheduler()
@@ -52,6 +53,7 @@ class Collector:
 
 class GatherManager:
     def __init__(self, debug=False) -> None:
+        # os.system('date 2024-07-22 && time 09:26:05')
         delete_time = '15:02:00'.split(':')
         scheduler.add_job(self.migrate_table, 'cron', hour=int(delete_time[0]), minute=int(delete_time[1]),
                           second=int(delete_time[2]), day_of_week='*', args=[IndexMinutePrice])
@@ -70,7 +72,6 @@ class GatherManager:
         self.index_collector = Collector('指数', self.stock_no, triggers)
         stock_analysis_time = delta('09:26', '09:26') + delta('09:31', '11:31') + delta('13:01', '14:58') + delta('15:01', '15:01')
         self.last_stock = {x.code: x for x in self._init_last_raw_stock_by_targetime(self.stock_no) if x}
-
         for idx, analysis_time in enumerate(stock_analysis_time):
             scheduler.add_job(self.analysis_stock_job, 'cron', hour=analysis_time.hour, minute=analysis_time.minute,
                               second=9, day_of_week='*', args=[analysis_time, '指数', idx])
@@ -86,7 +87,7 @@ class GatherManager:
         self.future_collector = Collector('期货', self.future_no, triggers)
         future_analysis_time = delta('09:30', '11:31') + delta('13:01', '15:01')
         self.last_stock.update({x.code: x for x in self._init_last_raw_stock_by_targetime(self.future_no) if x})
-        self._init_last_future_closep()
+        # self._init_last_future_closep()
 
         for idx, analysis_time in enumerate(future_analysis_time):
             scheduler.add_job(self.analysis_stock_job, 'cron', hour=analysis_time.hour, minute=analysis_time.minute,
@@ -100,8 +101,8 @@ class GatherManager:
                        ).group_by(IndexFutureMinutePriceFull.indexfuture_code)
             ids = list(map(lambda x: x[1], models))
             models = session.query(IndexFutureMinutePriceFull).filter(IndexFutureMinutePriceFull.id.in_(ids)).all()
-            self.last_future_closep = {x.indexfuture_code: x.closep for x in models}
-            logger.info(f'初始化last_stock：{self.last_stock}，期货昨收closep：{self.last_future_closep}, ids:{ids}')
+            # self.last_future_closep = {x.indexfuture_code: x.closep for x in models}
+            logger.info(f'初始化last_stock：{self.last_stock}，, ids:{ids}')
 
     def analysis_stock_job(self, target_time, stock_type, idx):
         today = datetime.now().date()
@@ -119,35 +120,49 @@ class GatherManager:
             sqlit_stock_no = stock_no.split('_')[-1]
             if idx != 0:
                 end = self._get_recent_by_target(sqlit_stock_no, targe_time_str)
-            else:  # 第一条用开盘数据
+            else:  # 第一条用开盘数据，交易量需大于0才能是开盘
                 with get_db_context_session(False, sqlite_engine) as session:
-                    end = session.query(RawStock).filter(RawStock.code == sqlit_stock_no, RawStock.create_time >=
-                                                         today).order_by(RawStock.create_time.asc()).first()
+                    data = session.query(RawStock).filter(RawStock.code == sqlit_stock_no, RawStock.create_time >=
+                                                          today).order_by(RawStock.create_time.asc()).all()
+                    end = None
+                    for end in data:
+                        end = Box(end.to_dict())
+                        end.data = Box(json.loads(end.data))
+                        if end.data.volume > 0:
+                            break
             if not end:
-                logger.error(f'{stock_no} 没有找到数据，目标时间 {targe_time_str}, idx: {idx}')
+                logger.error(f'{stock_no} {stock_type} 没有找到数据，目标时间 {targe_time_str}, idx: {idx}')
                 return
-            # 查询近分钟数据
-            with get_db_context_session(False, sqlite_engine) as session:
-                ret = session.query(RawStock).filter(RawStock.code == sqlit_stock_no, RawStock.id <= end.id, RawStock.create_time >= today)
-                if stock_no in self.last_stock:
-                    ret = ret.filter(RawStock.id >= self.last_stock[stock_no].id)
-                all_data = ret.order_by(RawStock.id.asc()).all()
+
+            if idx != 0:
+                # 查询近分钟数据
+                with get_db_context_session(False, sqlite_engine) as session:
+                    ret = session.query(RawStock).filter(RawStock.code == sqlit_stock_no, RawStock.id <= end.id, RawStock.create_time >= today)
+                    if stock_no in self.last_stock:
+                        ret = ret.filter(RawStock.id >= self.last_stock[stock_no].id)
+                    all_data = ret.order_by(RawStock.id.asc()).all()
+            else:
+                all_data = [end]
 
             # 计算表字段
             if len(all_data) > 0:
-                start = Box(all_data[0].to_dict())
-                start.data = Box(json.loads(start.data))
-                nows = list(map(lambda x: json.loads(x.data)['now'], all_data))
-                high, low = (max(nows), min(nows)) if idx != 0 else (end.data.now, end.data.now)
+                start = all_data[0]
+                if not isinstance(start, Box):
+                    start = Box(start.to_dict())
+                    start.data = Box(json.loads(start.data))
+                nows = list(map(lambda x: json.loads(x.data)['now'] if not isinstance(x.data, Box) else x.data.now, all_data))
+                high, low = max(nows), min(nows)
                 volume = (end.data.volume - start.data.volume) if idx != 0 else end.data.volume
-                min_pct_change = ((end.data.now - start.data.now) / start.data.now) if idx != 0 else end.data.now / float(end.data.close)
-            elif len(all_data) == 1:
+                min_pct_change = ((end.data.now - start.data.now) / start.data.now) if idx != 0 else end.data.now / \
+                    float(end.data.last_closep if stock_type == '期货' else end.data.close)
+            else:
                 high, low, volume, min_pct_change = (0, 0, 0, 0) if idx != 0 else (
                     end.data.now, end.data.now, end.data.volume, end.data.now / float(end.data.close))
 
             self.last_stock[stock_no] = end
             # 构造分钟记录表记录
-            logger.info(f'{stock_no} 完成分析 {curr_min_str}, 开时间：{start.time}/{start.id} 收时间：{end.time}/{end.id}, high: {high}, low: {low}, idx: {idx}, len(all_data): {len(all_data)}')
+            logger.info(
+                f'{stock_no} 完成{stock_type}分析 {curr_min_str}, 开时间：{start.time}/{start.id} 收时间：{end.time}/{end.id}, high: {high}, low: {low}, idx: {idx}, len(all_data): {len(all_data)}')
             if stock_type == '指数':
                 amount = 0 if len(all_data) == 1 else end.data.turn_over - start.data.turn_over
                 return IndexMinutePrice(curr_min=curr_min.strftime('%H%M'), index_code=self.stock_name[stock_no], last_closep=float(end.data.close),
@@ -183,7 +198,8 @@ class GatherManager:
             session.commit()
 
         self.last_stock = {}
-        self._init_last_future_closep()
+        logger.warning(f'当日初始化，last_stock：{self.last_stock}')
+        # self._init_last_future_closep()
 
     def migrate_table(self, table):
         now = datetime.today()

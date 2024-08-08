@@ -27,6 +27,7 @@ stock_calendar = get_calendar('XSHG')
 
 
 class Collector:
+    run_gather = True
 
     def __init__(self, name, stock_no, triggers: list[CronTrigger]):
         self.name = name
@@ -36,7 +37,14 @@ class Collector:
             scheduler.add_job(self.do_job, trigger)
         logger.info(f'启动{self.name}采集{self.stock_no} {triggers}')
 
+    @staticmethod
+    def set_run_gather(flag: bool):
+        Collector.run_gather = flag
+        logger.info(f'采集状态：{Collector.run_gather}')
+
     def do_job(self):
+        if not Collector.run_gather:
+            return
         logger.info(f'采集{self.name}')
         data = self.qutation.market_snapshot(self.stock_no)
         if not data:
@@ -53,7 +61,7 @@ class Collector:
 
 class GatherManager:
     def __init__(self, debug=False) -> None:
-        # os.system('date 2024-07-22 && time 09:26:05')
+        # os.system('date 2024-07-19 && time 09:26:05')
         delete_time = '15:02:00'.split(':')
         scheduler.add_job(self.migrate_table, 'cron', hour=int(delete_time[0]), minute=int(delete_time[1]),
                           second=int(delete_time[2]), day_of_week='*', args=[IndexMinutePrice])
@@ -153,8 +161,13 @@ class GatherManager:
                 nows = list(map(lambda x: json.loads(x.data)['now'] if not isinstance(x.data, Box) else x.data.now, all_data))
                 high, low = max(nows), min(nows)
                 volume = (end.data.volume - start.data.volume) if idx != 0 else end.data.volume
-                min_pct_change = ((end.data.now - start.data.now) / start.data.now) if idx != 0 else end.data.now / \
-                    float(end.data.last_closep if stock_type == '期货' else end.data.close)
+                if idx != 0:
+                    min_pct_change = (end.data.now - start.data.now) / start.data.now
+                else:
+                    last_closep = float(end.data.last_closep if stock_type == '期货' else end.data.close)
+                    min_pct_change = (end.data.now - last_closep) / last_closep
+                # min_pct_change = ((end.data.now - start.data.now) / start.data.now) if idx != 0 else end.data.now / \
+                #     float(end.data.last_closep if stock_type == '期货' else end.data.close)
             else:
                 high, low, volume, min_pct_change = (0, 0, 0, 0) if idx != 0 else (
                     end.data.now, end.data.now, end.data.volume, end.data.now / float(end.data.close))
@@ -164,7 +177,7 @@ class GatherManager:
             logger.info(
                 f'{stock_no} 完成{stock_type}分析 {curr_min_str}, 开时间：{start.time}/{start.id} 收时间：{end.time}/{end.id}, high: {high}, low: {low}, idx: {idx}, len(all_data): {len(all_data)}')
             if stock_type == '指数':
-                amount = 0 if len(all_data) == 1 else end.data.turn_over - start.data.turn_over
+                amount = end.data.turn_over if idx == 0 else end.data.turn_over - start.data.turn_over
                 return IndexMinutePrice(curr_min=curr_min.strftime('%H%M'), index_code=self.stock_name[stock_no], last_closep=float(end.data.close),
                                         openp=start.data.now, highp=high, lowp=low,  closep=end.data.now,
                                         volume=volume, amount=amount, min_pct_change=min_pct_change,

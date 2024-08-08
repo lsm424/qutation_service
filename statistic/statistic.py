@@ -31,6 +31,7 @@ if not os.path.exists(font_file):
         tar.extractall(path='./common')
 font = FontProperties(fname=font_file, size=10)
 
+
 class StatisticManager:
     """
     推送数据统计分析管理类
@@ -48,12 +49,14 @@ class StatisticManager:
         self._queue = Queue()
         self.__analysis_t = threading.Thread(target=self._analysis_thread)
         self.__analysis_t.setDaemon(True)
-        self.__analysis_t.start()
         self.__report_t = threading.Thread(target=self._report_thread)
         self.__report_t.setDaemon(True)
-        self.__report_t.start()
         self._opr_list = [QutationLogModel.OPR_PUSH, QutationLogModel.OPR_OFFLINE, QutationLogModel.OPR_SUBSCRIBE,
                           QutationLogModel.OPR_UNSUBSCRIBE]
+
+    def start(self):
+        self.__analysis_t.start()
+        self.__report_t.start()
 
     def push_qutation_log(self, client_name, client_id, opr, data=''):
         """
@@ -111,7 +114,7 @@ class StatisticManager:
 推送时间超过规定间隔数：{len(interval_error_data)}
 平均timestamp：{avg_time_data}'''
             logger.info(msg)
-            time.sleep(30)
+            time.sleep(120)
 
     def _analysis_quotation(self, quotation_info: QuotationInfo):
         """
